@@ -34,6 +34,7 @@
 /.*
 /opencv
 /Eigen3
+/lib
 
 *.~undo-tree~
 *.user

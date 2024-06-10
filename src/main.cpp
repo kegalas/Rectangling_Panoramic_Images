@@ -25,7 +25,8 @@ int main(int argc, char* argv[]) {
 //    sz.width = img.cols/2;
 //    cv::resize(img, img, sz);
 
-    RPI::localWarp(img);
+    cv::Mat output;
+    RPI::warpImage(img, output);
 
     return 0;
 }

@@ -16,7 +16,10 @@ set(Eigen3_DIR ./Eigen3/share/eigen3/cmake)
 find_package(Eigen3 REQUIRED)
 include_directories(${EIGEN3_INCLUDE_DIRS})
 
-file(GLOB SRC_LIST CONFIGURE_DEPENDS src/*.cpp src/*.h)
+include_directories("./include")
+LINK_LIBRARIES("${CMAKE_CURRENT_SOURCE_DIR}/lib/glfw3.dll")
+
+file(GLOB SRC_LIST CONFIGURE_DEPENDS src/*.cpp src/*.h src/*.c)
 add_executable(${PROJECT_NAME} ${SRC_LIST})
 
 target_link_libraries(${PROJECT_NAME} 
@@ -25,3 +28,4 @@ target_link_libraries(${PROJECT_NAME}
 target_include_directories(${PROJECT_NAME} PUBLIC
                           "${PROJECT_BINARY_DIR}"
                           )
+
