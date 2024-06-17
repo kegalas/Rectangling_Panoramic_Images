@@ -162,7 +162,7 @@ void getMask(cv::Mat const & img, cv::Mat & output){
             b = img.at<cv::Vec3b>(i,j).val[0];
             g = img.at<cv::Vec3b>(i,j).val[1];
             r = img.at<cv::Vec3b>(i,j).val[2];
-            if(g>=250&&b<=50&&r<=50) ret.at<uint8_t>(i,j) = INVALID_PIXEL;
+            if(g>=240&&b<=150&&r<=150) ret.at<uint8_t>(i,j) = INVALID_PIXEL;
         }
     }
 
@@ -586,8 +586,8 @@ namespace GlobalWarp{
 
 int const GRID_ROW_CNT = 10;
 int const GRID_COL_CNT = 40;
-//int const GRID_ROW_CNT = 3;
-//int const GRID_COL_CNT = 10;
+//int const GRID_ROW_CNT = 2;
+//int const GRID_COL_CNT = 2;
 int const BIN_NUM = 50;
 
 class Segment{
@@ -1298,13 +1298,13 @@ void glShow(cv::Mat const & img, cv::Mat const & gridInit, cv::Mat const & gridA
     for(size_t i=0;i<rows;i++){
         for(size_t j=0;j<cols;j++){
             int x = gridAfter.at<cv::Vec2i>(i, j)[0], y = gridAfter.at<cv::Vec2i>(i, j)[1];
-            vertices[(i*cols+j)*5] = float(2.0*x/width-1);;
-            vertices[(i*cols+j)*5+1] = -float(2.0*y/height-1);
+            vertices[(i*cols+j)*5] = std::min(std::max(float(2.0*x/width-1), -1.f), 1.f);
+            vertices[(i*cols+j)*5+1] = std::min(std::max(-float(2.0*y/height-1), -1.f), 1.f);
             vertices[(i*cols+j)*5+2] = 0.f;
 
             x = gridInit.at<cv::Vec2i>(i, j)[0], y = gridInit.at<cv::Vec2i>(i, j)[1];
-            vertices[(i*cols+j)*5+3] = float(1.0*x/width);
-            vertices[(i*cols+j)*5+4] = float(1-1.0*y/height);
+            vertices[(i*cols+j)*5+3] = std::min(std::max(float(1.0*x/width), 0.f), 1.f);
+            vertices[(i*cols+j)*5+4] = std::min(std::max(float(1-1.0*y/height), 0.f), 1.f);
         }
     }
 
@@ -1345,8 +1345,13 @@ void glShow(cv::Mat const & img, cv::Mat const & gridInit, cv::Mat const & gridA
 
     glBindTexture(GL_TEXTURE_2D, texture);
 
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+//    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+//    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+//    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+//    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
@@ -1382,7 +1387,7 @@ void glShow(cv::Mat const & img, cv::Mat const & gridInit, cv::Mat const & gridA
 
 } // namespace GL
 
-void warpImage(cv::Mat const & img, cv::Mat& output){
+void warpImage(cv::Mat const & img, cv::Mat& output, std::string const & path){
     auto start = std::chrono::high_resolution_clock::now();
     cv::Mat dis_delta;
     cv::Mat img_out = img.clone();
@@ -1397,7 +1402,7 @@ void warpImage(cv::Mat const & img, cv::Mat& output){
     cv::imwrite("grid_init.jpg", img_out);
 
     cv::Mat gridAfter;
-    GlobalWarp::globalWarp(img, gridInit, gridAfter, 10);
+    GlobalWarp::globalWarp(img, gridInit, gridAfter, 3);
 
     img_out = cv::Mat::zeros(img.rows, img.cols, CV_8UC3);
     GlobalWarp::drawGrid(img_out, gridAfter);
@@ -1406,7 +1411,30 @@ void warpImage(cv::Mat const & img, cv::Mat& output){
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
     std::cout << duration << "ms" << std::endl;
-    GL::glShow(img, gridInit, gridAfter);
+
+    cv::Mat mask;
+    LocalWarp::getMask(img, mask);
+    cv::Mat img_dilated = img.clone();
+
+    for(int i=0;i<img_dilated.rows;i++){
+        for(int j=0;j<img_dilated.cols;j++){
+            if(mask.at<uint8_t>(i, j)==LocalWarp::INVALID_PIXEL)img_dilated.at<cv::Vec3b>(i, j) = cv::Vec3b(0, 0, 0);
+        }
+    }
+
+    cv::Mat struct1 = getStructuringElement(0, cv::Size(3, 3));//矩形结构元素
+    cv::dilate(img_dilated, img_dilated, struct1, cv::Point(-1, -1), 20);
+    cv::imshow("img_dilated", img_dilated);
+    cv::waitKey(0);
+    cv::Mat texture = img.clone();
+
+    for(int i=0;i<img_dilated.rows;i++){
+        for(int j=0;j<img_dilated.cols;j++){
+            if(mask.at<uint8_t>(i, j)==LocalWarp::INVALID_PIXEL) texture.at<cv::Vec3b>(i, j) = img_dilated.at<cv::Vec3b>(i, j);
+        }
+    }
+
+    GL::glShow(texture, gridInit, gridAfter);
 
     output = std::move(img_out);
 }

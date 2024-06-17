@@ -20,13 +20,8 @@ int main(int argc, char* argv[]) {
     bool extra = 0;
     if(argc==3 && std::string(argv[2])=="-extra") extra = 1;
 
-//    cv::Size sz;
-//    sz.height = img.rows/2;
-//    sz.width = img.cols/2;
-//    cv::resize(img, img, sz);
-
     cv::Mat output;
-    RPI::warpImage(img, output);
+    RPI::warpImage(img, output, filename);
 
     return 0;
 }
