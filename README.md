@@ -3,9 +3,11 @@ my implementation of Rectangling Panoramic Images via Warping
 
 尚未完成，处于正在开发的过程中。
 
-目前还差Line Preservation部分的能量没做。另外需要手动把img.vs和img.fs复制到可执行文件目录下，才能使用。后续可以研究下怎么用cmake自动实现这个。
+目前大体的算法是完成了，只差一些后处理以及性能优化没做。
 
-后续会在个人博客更新论文精读和实现指南。
+另外需要手动把img.vs和img.fs复制到可执行文件目录下，才能使用。后续可以研究下怎么用cmake自动实现这个。
+
+个人博客的论文精读和实现指南：[https://kegalas.top/p/rectangling-panoramic-images-via-warping%E8%AE%BA%E6%96%87%E7%B2%BE%E8%AF%BB%E4%B8%8E%E5%A4%8D%E7%8E%B0/](https://kegalas.top/p/rectangling-panoramic-images-via-warping%E8%AE%BA%E6%96%87%E7%B2%BE%E8%AF%BB%E4%B8%8E%E5%A4%8D%E7%8E%B0/)
 
 原论文：[https://people.csail.mit.edu/kaiming/publications/sig13pano.pdf](https://people.csail.mit.edu/kaiming/publications/sig13pano.pdf)
 
