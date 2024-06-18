@@ -992,7 +992,7 @@ void getElMat(cv::Mat const & grid, Eigen::SparseMatrix<double>& output,
     output = std::move(ret);
 }
 
-void getEbMat(cv::Mat const & img, cv::Mat const & grid, Eigen::SparseMatrix<double>& outputMat, Eigen::VectorXd& outputVec, double lambda=1e8){
+void getEbMat(cv::Size const & rectSz, cv::Mat const & grid, Eigen::SparseMatrix<double>& outputMat, Eigen::VectorXd& outputVec, double lambda=1e8){
     size_t rows = grid.rows, cols = grid.cols;
     size_t boundVertexCnt = 2*rows+2*cols-4;
     Eigen::SparseMatrix<double> retM(boundVertexCnt*2, rows*cols*2);
@@ -1011,7 +1011,7 @@ void getEbMat(cv::Mat const & img, cv::Mat const & grid, Eigen::SparseMatrix<dou
         retV(cnt) = 0;
         cnt++;
         retM.insert(cnt, ((rows-1)*cols+i)*2+1) = 1;
-        retV(cnt) = img.rows-1;
+        retV(cnt) = rectSz.height-1;
         cnt++;
     }
 
@@ -1024,7 +1024,7 @@ void getEbMat(cv::Mat const & img, cv::Mat const & grid, Eigen::SparseMatrix<dou
         cnt++;
 
         retM.insert(cnt, (j*cols+cols-1)*2) = 1;
-        retV(cnt) = img.cols-1;
+        retV(cnt) = rectSz.width-1;
         cnt++;
         retM.insert(cnt, (j*cols+cols-1)*2+1) = 0;
         retV(cnt) = 0;
@@ -1039,7 +1039,7 @@ void getEbMat(cv::Mat const & img, cv::Mat const & grid, Eigen::SparseMatrix<dou
     cnt++;
 
     retM.insert(cnt, (cols-1)*2) = 1;
-    retV(cnt) = img.cols-1;
+    retV(cnt) = rectSz.width-1;
     cnt++;
     retM.insert(cnt, (cols-1)*2+1) = 1;
     retV(cnt) = 0;
@@ -1049,14 +1049,14 @@ void getEbMat(cv::Mat const & img, cv::Mat const & grid, Eigen::SparseMatrix<dou
     retV(cnt) = 0;
     cnt++;
     retM.insert(cnt, (rows-1)*cols*2+1) = 1;
-    retV(cnt) = img.rows-1;
+    retV(cnt) = rectSz.height-1;
     cnt++;
 
     retM.insert(cnt, ((rows-1)*cols+cols-1)*2) = 1;
-    retV(cnt) = img.cols-1;
+    retV(cnt) = rectSz.width-1;
     cnt++;
     retM.insert(cnt, ((rows-1)*cols+cols-1)*2+1) = 1;
-    retV(cnt) = img.rows-1;
+    retV(cnt) = rectSz.height-1;
     cnt++;
 
     retV = retV * lambda;
@@ -1065,15 +1065,15 @@ void getEbMat(cv::Mat const & img, cv::Mat const & grid, Eigen::SparseMatrix<dou
     outputMat = std::move(retM);
 }
 
-void vec2Grid(cv::Mat const & img, cv::Mat const & grid, Eigen::VectorXd const & V, cv::Mat& output){
+void vec2Grid(cv::Size const & rectSz, cv::Mat const & grid, Eigen::VectorXd const & V, cv::Mat& output){
     size_t rows = grid.rows, cols = grid.cols;
     cv::Mat ret = grid.clone();
     for(size_t i=0;i<rows;i++){
         for(size_t j=0;j<cols;j++){
             int x = V((i*cols+j)*2);
             int y = V((i*cols+j)*2+1);
-            x = std::min(std::max(0, x), img.cols-1);
-            y = std::min(std::max(0, y), img.rows-1);
+            x = std::min(std::max(0, x), rectSz.width-1);
+            y = std::min(std::max(0, y), rectSz.height-1);
             ret.at<cv::Vec2i>(i, j) = cv::Vec2i(x, y);
         }
     }
@@ -1115,7 +1115,51 @@ void resizeGrid(cv::Mat& grid, cv::Size const & srcSz, cv::Size const & dstSz){
     }
 }
 
-void globalWarp(cv::Mat const & img_, cv::Mat const & grid_, cv::Mat& output, int iterCnt=10){
+void gridStretchingReduction(cv::Mat const & gridInit, cv::Mat const & gridAfter, cv::Size& rectSz){
+    double avgX=0.0, avgY = 0.0;
+    for(size_t i=0;i<GRID_ROW_CNT-1;i++){
+        for(size_t j=0;j<GRID_COL_CNT-1;j++){
+            int xmin0=1e9, xmax0=0, ymin0=1e9, ymax0=0;
+            cv::Vec2i v = gridInit.at<cv::Vec2i>(i,j);
+            xmin0 = std::min(xmin0, v[0]); ymin0 = std::min(ymin0, v[1]);
+            xmax0 = std::max(xmax0, v[0]); ymax0 = std::max(ymax0, v[1]);
+            v = gridInit.at<cv::Vec2i>(i,j+1);
+            xmin0 = std::min(xmin0, v[0]); ymin0 = std::min(ymin0, v[1]);
+            xmax0 = std::max(xmax0, v[0]); ymax0 = std::max(ymax0, v[1]);
+            v = gridInit.at<cv::Vec2i>(i+1,j+1);
+            xmin0 = std::min(xmin0, v[0]); ymin0 = std::min(ymin0, v[1]);
+            xmax0 = std::max(xmax0, v[0]); ymax0 = std::max(ymax0, v[1]);
+            v = gridInit.at<cv::Vec2i>(i+1,j+1);
+            xmin0 = std::min(xmin0, v[0]); ymin0 = std::min(ymin0, v[1]);
+            xmax0 = std::max(xmax0, v[0]); ymax0 = std::max(ymax0, v[1]);
+
+            int xmin1=1e9, xmax1=0, ymin1=1e9, ymax1=0;
+            v = gridAfter.at<cv::Vec2i>(i,j);
+            xmin1 = std::min(xmin1, v[0]); ymin1 = std::min(ymin1, v[1]);
+            xmax1 = std::max(xmax1, v[0]); ymax1 = std::max(ymax1, v[1]);
+            v = gridAfter.at<cv::Vec2i>(i,j+1);
+            xmin1 = std::min(xmin1, v[0]); ymin1 = std::min(ymin1, v[1]);
+            xmax1 = std::max(xmax1, v[0]); ymax1 = std::max(ymax1, v[1]);
+            v = gridAfter.at<cv::Vec2i>(i+1,j+1);
+            xmin1 = std::min(xmin1, v[0]); ymin1 = std::min(ymin1, v[1]);
+            xmax1 = std::max(xmax1, v[0]); ymax1 = std::max(ymax1, v[1]);
+            v = gridAfter.at<cv::Vec2i>(i+1,j+1);
+            xmin1 = std::min(xmin1, v[0]); ymin1 = std::min(ymin1, v[1]);
+            xmax1 = std::max(xmax1, v[0]); ymax1 = std::max(ymax1, v[1]);
+
+            if(xmax0-xmin0>3) avgX += 1.0*(xmax1-xmin1)/(xmax0-xmin0);
+            if(ymax0-ymin0>3) avgY += 1.0*(ymax1-ymin1)/(ymax0-ymin0);
+        }
+    }
+
+    avgX /= (GRID_COL_CNT-1)*(GRID_ROW_CNT-1);
+    avgY /= (GRID_COL_CNT-1)*(GRID_ROW_CNT-1);
+
+    rectSz.width /= avgX;
+    rectSz.height /= avgY;
+}
+
+void globalWarp(cv::Mat const & img_, cv::Size const & rectSz, cv::Mat const & grid_, cv::Mat& output, int iterCnt=10){
     cv::Mat ret = grid_.clone();
     cv::Mat const grid = grid_.clone();
 
@@ -1138,7 +1182,7 @@ void globalWarp(cv::Mat const & img_, cv::Mat const & grid_, cv::Mat& output, in
 
     Eigen::SparseMatrix<double> ebM;
     Eigen::VectorXd ebV;
-    getEbMat(img_, grid, ebM, ebV);
+    getEbMat(rectSz, grid, ebM, ebV);
 
     for(int T=0;T<iterCnt;T++){
         Eigen::SparseMatrix<double> elM;
@@ -1152,7 +1196,7 @@ void globalWarp(cv::Mat const & img_, cv::Mat const & grid_, cv::Mat& output, in
         Eigen::SparseQR<Eigen::SparseMatrix<double>, Eigen::COLAMDOrdering<int> > solver;
         solver.compute(A);
         Eigen::VectorXd V = solver.solve(B);
-        vec2Grid(img_, grid, V, ret);
+        vec2Grid(rectSz, grid, V, ret);
 
         updateBins(lines, grid, ret, binsCnt, binsRad);
     }
@@ -1280,8 +1324,7 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
     glViewport(0, 0, width, height);
 }
 
-void glShow(cv::Mat const & img, cv::Mat const & gridInit, cv::Mat const & gridAfter){
-    size_t width = img.cols, height = img.rows;
+void glShow(cv::Mat const & img, cv::Mat const & gridInit, cv::Mat const & gridAfter, size_t width, size_t height){
 
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
@@ -1314,8 +1357,8 @@ void glShow(cv::Mat const & img, cv::Mat const & gridInit, cv::Mat const & gridA
             vertices[(i*cols+j)*5+2] = 0.f;
 
             x = gridInit.at<cv::Vec2i>(i, j)[0], y = gridInit.at<cv::Vec2i>(i, j)[1];
-            vertices[(i*cols+j)*5+3] = std::min(std::max(float(1.0*x/width), 0.f), 1.f);
-            vertices[(i*cols+j)*5+4] = std::min(std::max(float(1-1.0*y/height), 0.f), 1.f);
+            vertices[(i*cols+j)*5+3] = std::min(std::max(float(1.0*x/img.cols), 0.f), 1.f);
+            vertices[(i*cols+j)*5+4] = std::min(std::max(float(1-1.0*y/img.rows), 0.f), 1.f);
         }
     }
 
@@ -1369,7 +1412,7 @@ void glShow(cv::Mat const & img, cv::Mat const & gridInit, cv::Mat const & gridA
     cv::Mat tempMat = img.clone();
     cv::cvtColor(tempMat, tempMat, cv::COLOR_BGR2RGB);
     cv::flip(tempMat, tempMat, 0);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, tempMat.data);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, img.cols, img.rows, 0, GL_RGB, GL_UNSIGNED_BYTE, tempMat.data);
     glGenerateMipmap(GL_TEXTURE_2D);
 
     while(!glfwWindowShouldClose(window))
@@ -1418,16 +1461,25 @@ void warpImage(cv::Mat const & img, cv::Mat& output, std::string const & path, b
     cv::Mat gridInit;
     GlobalWarp::getGrid(img_small, dis_delta, gridInit);
 
-    img_out = img_small.clone();
-    GlobalWarp::drawGrid(img_out, gridInit);
-    if(extra)  cv::imwrite("grid_init.jpg", img_out);
+    if(extra){
+        img_out = img_small.clone();
+        GlobalWarp::drawGrid(img_out, gridInit);
+        cv::imwrite("grid_init.jpg", img_out);
+    }
 
     cv::Mat gridAfter;
-    GlobalWarp::globalWarp(img_small, gridInit, gridAfter, 3);
+    cv::Size rectSz;
+    rectSz.width = img_small.cols;
+    rectSz.height = img_small.rows;
+    GlobalWarp::globalWarp(img_small, rectSz, gridInit, gridAfter, 1);
+    GlobalWarp::gridStretchingReduction(gridInit, gridAfter, rectSz);
+    GlobalWarp::globalWarp(img_small, rectSz, gridInit, gridAfter, 3);
 
-    img_out = cv::Mat::zeros(img_small.rows, img_small.cols, CV_8UC3);
-    GlobalWarp::drawGrid(img_out, gridAfter);
-    if(extra)  cv::imwrite("grid_after.jpg", img_out);
+    if(extra){
+        img_out = cv::Mat::zeros(rectSz.height, rectSz.width, CV_8UC3);
+        GlobalWarp::drawGrid(img_out, gridAfter);
+        cv::imwrite("grid_after.jpg", img_out);
+    }
 
     GlobalWarp::resizeGrid(gridInit, sz, cv::Size(img.cols, img.rows));
     GlobalWarp::resizeGrid(gridAfter, sz, cv::Size(img.cols, img.rows));
@@ -1456,7 +1508,7 @@ void warpImage(cv::Mat const & img, cv::Mat& output, std::string const & path, b
         }
     }
 
-    GL::glShow(texture, gridInit, gridAfter);
+    GL::glShow(texture, gridInit, gridAfter, rectSz.width, rectSz.height);
 
     output = std::move(img_out);
 }
