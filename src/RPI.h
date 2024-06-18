@@ -1104,12 +1104,23 @@ Eigen::VectorXd vconcat(Eigen::VectorXd const & lhs, Eigen::VectorXd const & rhs
     return ret;
 }
 
+void resizeGrid(cv::Mat& grid, cv::Size const & srcSz, cv::Size const & dstSz){
+    for(size_t i=0;i<grid.rows;i++){
+        for(size_t j=0;j<grid.cols;j++){
+            cv::Vec2i v = grid.at<cv::Vec2i>(i,j);
+            v[0] = int(1.0*v[0]*dstSz.width/srcSz.width+0.5);
+            v[1] = int(1.0*v[1]*dstSz.height/srcSz.height+0.5);
+            grid.at<cv::Vec2i>(i,j) = v;
+        }
+    }
+}
+
 void globalWarp(cv::Mat const & img_, cv::Mat const & grid_, cv::Mat& output, int iterCnt=10){
     cv::Mat ret = grid_.clone();
     cv::Mat const grid = grid_.clone();
 
     Eigen::SparseMatrix<double> esM;
-    getEsMat(grid, esM, 3);
+    getEsMat(grid, esM, 2);
 
     GlobalWarp::LinesInQuadType lines;
     GlobalWarp::getLines(img_, grid, lines);
@@ -1387,26 +1398,39 @@ void glShow(cv::Mat const & img, cv::Mat const & gridInit, cv::Mat const & gridA
 
 } // namespace GL
 
-void warpImage(cv::Mat const & img, cv::Mat& output, std::string const & path){
+void warpImage(cv::Mat const & img, cv::Mat& output, std::string const & path, bool extra=false){
     auto start = std::chrono::high_resolution_clock::now();
     cv::Mat dis_delta;
     cv::Mat img_out = img.clone();
-    LocalWarp::localWarp(img, img_out, dis_delta);
-    cv::imwrite("local_warp.jpg", img_out);
+    cv::Mat img_small;
+    cv::Size sz;
+//    sz.width = 800;
+//    sz.height = 200;
+    sz.width = img.cols;
+    sz.height = img.rows;
+//    sz.width = std::max(800, sz.width);
+//    sz.height = std::max(200, sz.height);
+    cv::resize(img, img_small, sz);
+
+    LocalWarp::localWarp(img_small, img_out, dis_delta);
+    if(extra) cv::imwrite("local_warp.jpg", img_out);
 
     cv::Mat gridInit;
-    GlobalWarp::getGrid(img, dis_delta, gridInit);
+    GlobalWarp::getGrid(img_small, dis_delta, gridInit);
 
-    img_out = img.clone();
+    img_out = img_small.clone();
     GlobalWarp::drawGrid(img_out, gridInit);
-    cv::imwrite("grid_init.jpg", img_out);
+    if(extra)  cv::imwrite("grid_init.jpg", img_out);
 
     cv::Mat gridAfter;
-    GlobalWarp::globalWarp(img, gridInit, gridAfter, 3);
+    GlobalWarp::globalWarp(img_small, gridInit, gridAfter, 3);
 
-    img_out = cv::Mat::zeros(img.rows, img.cols, CV_8UC3);
+    img_out = cv::Mat::zeros(img_small.rows, img_small.cols, CV_8UC3);
     GlobalWarp::drawGrid(img_out, gridAfter);
-    cv::imwrite("grid_after.jpg", img_out);
+    if(extra)  cv::imwrite("grid_after.jpg", img_out);
+
+    GlobalWarp::resizeGrid(gridInit, sz, cv::Size(img.cols, img.rows));
+    GlobalWarp::resizeGrid(gridAfter, sz, cv::Size(img.cols, img.rows));
 
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
@@ -1424,8 +1448,6 @@ void warpImage(cv::Mat const & img, cv::Mat& output, std::string const & path){
 
     cv::Mat struct1 = getStructuringElement(0, cv::Size(3, 3));//矩形结构元素
     cv::dilate(img_dilated, img_dilated, struct1, cv::Point(-1, -1), 20);
-    cv::imshow("img_dilated", img_dilated);
-    cv::waitKey(0);
     cv::Mat texture = img.clone();
 
     for(int i=0;i<img_dilated.rows;i++){
