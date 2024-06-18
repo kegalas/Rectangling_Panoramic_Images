@@ -21,7 +21,7 @@ int main(int argc, char* argv[]) {
     if(argc==3 && std::string(argv[2])=="-extra") extra = 1;
 
     cv::Mat output;
-    RPI::warpImage(img, output, filename, extra);
+    RPI::warpImage(img, output, 2, extra);
 
     return 0;
 }

@@ -22,6 +22,7 @@
 namespace RPI{
 
 namespace Geometry{
+// 来自于我的ACM计算几何板子，这里只是用来求线段交点的。
 typedef double db;
 struct Point{
     db x,y;
@@ -142,7 +143,7 @@ namespace LocalWarp{
 enum{
     INVALID_PIXEL = 0,
     VALID_PIXEL = 1,
-    SEAM_PIXEL = 2
+    SEAM_PIXEL = 2 // seam上的像素，能量会被赋值为1e5，这是我添加的东西，而非原论文的
 };
 
 enum{
@@ -154,6 +155,10 @@ enum{
 };
 
 void getMask(cv::Mat const & img, cv::Mat & output){
+    // 从原图中得到无效像素的mask，这里我的判断标准是是否接近绿色
+    // 因为绿色比较少见
+    // 显然有更好的方法去做这件事，但是我这里没有什么原始的全景照片信息，只能找论文中的图用PS加上绿色边界了
+    // 而且加的不是很好，不是硬边缘背景
     cv::Mat ret = cv::Mat::ones(img.rows, img.cols, CV_8UC1);
 
     for(size_t i=0;i<img.rows;i++){
@@ -170,6 +175,7 @@ void getMask(cv::Mat const & img, cv::Mat & output){
 }
 
 void getEnergy(cv::Mat const & img, cv::Mat & output, cv::Mat const & mask){
+    // 获取图像像素的能量信息，用于求解seam。使用sobel算子计算
     cv::Mat dx, dy;
     cv::Mat img_gray;
 
@@ -185,7 +191,7 @@ void getEnergy(cv::Mat const & img, cv::Mat & output, cv::Mat const & mask){
         for(size_t j=0;j<img.cols;j++){
             ret.at<double>(i, j) = dx.at<uint8_t>(i,j)/2.0+dy.at<uint8_t>(i,j)/2.0;
             if(mask.at<uint8_t>(i,j)==INVALID_PIXEL) ret.at<double>(i, j) = 1e8;
-            else if(mask.at<uint8_t>(i,j)==SEAM_PIXEL) ret.at<double>(i, j) = 1e5;
+            else if(mask.at<uint8_t>(i,j)==SEAM_PIXEL) ret.at<double>(i, j) = 1e5; // 非原论文内容
         }
     }
 
@@ -193,6 +199,10 @@ void getEnergy(cv::Mat const & img, cv::Mat & output, cv::Mat const & mask){
 }
 
 uint8_t getBoundarySegment(cv::Mat const & mask, std::vector<cv::Point>& output){
+    // 即获取原文中提到的最长的边界段
+    // 这里的实现比较暴力，纯纯写了四种情况
+    // 想要优雅可以尝试旋转图片，用同一段代码检测
+
     output.clear();
     uint8_t seg_type = INVALID_SIDE;
     size_t max_len = 0;
@@ -332,6 +342,8 @@ uint8_t getBoundarySegment(cv::Mat const & mask, std::vector<cv::Point>& output)
 void getSubImageVertex(cv::Mat const & img, uint8_t seg_type,
                        std::vector<cv::Point> const & bound_seg,
                        std::vector<cv::Point>& output){
+    // 通过bound_seg获取其对应的sub image的左上右下两个顶点的坐标
+
     output.clear();
     if(bound_seg.size()!=2||seg_type==INVALID_SIDE) return;
 
@@ -372,6 +384,10 @@ void getSubImageVertex(cv::Mat const & img, uint8_t seg_type,
 
 void addSeam(cv::Mat& img, cv::Mat& mask, cv::Mat const & energy, cv::Mat& dis_delta,
              uint8_t seg_type, std::vector<cv::Point> const & sub_img_vertex){
+    // 动态规划求解seam
+    // 代码很暴力，写了四种情况，可以尝试旋转图片来优雅地实现
+    // dis_delta指的是像素距离原图对应像素的距离，在获取grid的时候有用
+
     cv::Mat dp = cv::Mat::zeros(img.rows, img.cols, CV_64FC1);
     std::vector<cv::Point> seam;
 
@@ -562,6 +578,7 @@ void addSeam(cv::Mat& img, cv::Mat& mask, cv::Mat const & energy, cv::Mat& dis_d
 }
 
 void localWarp(cv::Mat const & img, cv::Mat& output, cv::Mat& dis_delta){
+    // 输入图像，输出localwarp后的图片，还有每个像素相对于原图对应像素的移动距离
     cv::Mat energy, mask;
     cv::Mat ret = img.clone();
     dis_delta = cv::Mat::zeros(img.rows, img.cols, CV_32SC2);
@@ -586,11 +603,10 @@ namespace GlobalWarp{
 
 int const GRID_ROW_CNT = 10;
 int const GRID_COL_CNT = 40;
-//int const GRID_ROW_CNT = 2;
-//int const GRID_COL_CNT = 2;
 int const BIN_NUM = 50;
 
 class Segment{
+    // 存储线段，方便进行保线运算
 public:
     cv::Vec2d a, b;
     double rad;
@@ -602,7 +618,7 @@ public:
         cv::Vec2d v = b-a;
         rad = v[0]/std::sqrt(v[0]*v[0]+v[1]*v[1]);
         if(rad>1) rad = 1-1e-5;
-        if(rad<-1) rad = -1+1e-5;
+        if(rad<-1) rad = -1+1e-5; // 防止出现NaN
         rad = acos(rad);
         id = -1;
     }
@@ -611,8 +627,10 @@ public:
 };
 
 using LinesInQuadType = std::array<std::array<std::vector<Segment>, GRID_COL_CNT-1>, GRID_ROW_CNT-1>;
+// 存储每个quad里面的线段
 
 void getGrid(cv::Mat const & img, cv::Mat const & dis_delta, cv::Mat& output){
+    // 获取初始的grid
     cv::Mat ret = cv::Mat::zeros(GRID_ROW_CNT, GRID_COL_CNT, CV_32SC2);
     int w = img.cols, h = img.rows;
     int w_delta = (w+GRID_COL_CNT-2)/(GRID_COL_CNT-1);
@@ -635,6 +653,7 @@ void getGrid(cv::Mat const & img, cv::Mat const & dis_delta, cv::Mat& output){
 }
 
 void drawGrid(cv::Mat& img, cv::Mat const & grid){
+    // 在图像img上绘制grid，主要是用于检查实现正确性
     for(int i=0;i<GRID_COL_CNT;i++){
         for(int j=0;j<GRID_ROW_CNT;j++){
             cv::Point p1 = grid.at<cv::Vec2i>(j, i);
@@ -651,6 +670,7 @@ void drawGrid(cv::Mat& img, cv::Mat const & grid){
 }
 
 void drawLines(cv::Mat& img, LinesInQuadType const & lines){
+    // 在图像上绘制各个quad里的线段，主要是用于检查实现正确性
     for(size_t i=0;i<GRID_ROW_CNT-1;i++){
         for(size_t j=0;j<GRID_COL_CNT-1;j++){
             for(auto const & l:lines[i][j]){
@@ -663,19 +683,23 @@ void drawLines(cv::Mat& img, LinesInQuadType const & lines){
 }
 
 void drawLines(cv::Mat& img, std::vector<cv::Vec4f> const & lines){
+    // 在图像上绘制初始的检测出来的线段，主要是用于检查实现正确性
     cv::Ptr<cv::LineSegmentDetector> lsd = cv::createLineSegmentDetector(cv::LSD_REFINE_STD);
     lsd->drawSegments(img, lines);
 }
 
 void getLines(cv::Mat const & img, cv::Mat const & gridInit, LinesInQuadType& output){
+    // 获取图像上的线段信息，切割后放入各个quad中
     double const mindis = 1;
     cv::Mat img_gray;
     cv::cvtColor(img, img_gray, cv::COLOR_BGR2GRAY);
     cv::Ptr<cv::LineSegmentDetector> lsd = cv::createLineSegmentDetector(cv::LSD_REFINE_STD);
     std::vector<cv::Vec4f> lines;
-    lsd->detect(img_gray, lines);
+    lsd->detect(img_gray, lines); // opencv自带的图像检测算法
 
     auto quadCutSeg = [&mindis](std::array<cv::Vec2f, 4> const & quad, cv::Vec4f const & seg)->std::pair<bool, cv::Vec4f>{
+        // 切割一条线段，获取属于quad内的部分
+        // 返回的first是代表是否有在quad的部分，second则是这部分线段
         std::vector<Geometry::Point> poly;
         poly.emplace_back(quad[0][0], quad[0][1]);
         poly.emplace_back(quad[2][0], quad[2][1]);
@@ -684,10 +708,10 @@ void getLines(cv::Mat const & img, cv::Mat const & gridInit, LinesInQuadType& ou
 
         Geometry::Point p1{seg[0], seg[1]};
         Geometry::Point p2{seg[2], seg[3]};
-        if(Geometry::len(p1-p2)<mindis){
+        if(Geometry::len(p1-p2)<mindis){ // 线段太小抛弃，否则之后有概率出现NaN
             return {false, seg};
         }
-        if(Geometry::inpoly(poly, p1) && Geometry::inpoly(poly, p2)){
+        if(Geometry::inpoly(poly, p1) && Geometry::inpoly(poly, p2)){ // 线段完全在quad内
             return {true, seg};
         }
 
@@ -699,14 +723,14 @@ void getLines(cv::Mat const & img, cv::Mat const & gridInit, LinesInQuadType& ou
         segs.emplace_back(Geometry::Point(quad[0][0], quad[0][1]), Geometry::Point(quad[2][0], quad[2][1]));
         Geometry::Seg seg2{Geometry::Point(seg[0], seg[1]), Geometry::Point(seg[2], seg[3])};
 
-        for(auto const & seg1:segs){
+        for(auto const & seg1:segs){ // 暴力和quad的四条边求交点，可知最多有两个交点（除去四个顶点的情况）
             for(auto const &p:Geometry::inter(seg1, seg2)){
                 interPoints.push_back(p);
             }
         }
-        if(interPoints.size()==0) return {false, cv::Vec4f()};
+        if(interPoints.size()==0) return {false, cv::Vec4f()}; // 完全不相交
 
-        if(interPoints.size()==1){
+        if(interPoints.size()==1){ // 线段的一个点在quad内，而一个在外，需要把在内的顶点放入
             if(Geometry::inpoly(poly, p1)) interPoints.push_back(p1);
             else interPoints.push_back(p2);
         }
@@ -733,7 +757,7 @@ void getLines(cv::Mat const & img, cv::Mat const & gridInit, LinesInQuadType& ou
             quad[2] = cv::Vec2f(gridInit.at<cv::Vec2i>(i+1, j));
             quad[3] = cv::Vec2f(gridInit.at<cv::Vec2i>(i+1, j+1));
 
-            for(auto const & line:lines){
+            for(auto const & line:lines){ // 暴力检测所有线段和所有quad的交集，应该会有更好的算法
                 auto ans = quadCutSeg(quad, line);
                 if(ans.first) output[i][j].emplace_back(ans.second[0], ans.second[1], ans.second[2], ans.second[3]);
             }
@@ -742,6 +766,7 @@ void getLines(cv::Mat const & img, cv::Mat const & gridInit, LinesInQuadType& ou
 }
 
 Eigen::MatrixXd getBilinearInterpolationMat(std::vector<cv::Vec2i> const & quad, Segment const & l){
+    // 获取双线性插值矩阵，具体可见博客的数学详解
     Eigen::MatrixXd m1(4, 8);
     m1 << l.a[0], l.a[1], l.a[0]*l.a[1], 1, 0, 0, 0, 0,
         0, 0, 0, 0, l.a[0], l.a[1], l.a[0]*l.a[1], 1,
@@ -766,6 +791,10 @@ Eigen::MatrixXd getBilinearInterpolationMat(std::vector<cv::Vec2i> const & quad,
 }
 
 void initBins(LinesInQuadType& lines, std::vector<int>& binsCntOutput, std::vector<double>& binsRadOutput, int M = BIN_NUM){
+    // 初始化各个bin
+    // 这里的theta_m实际上是个旋转的相对值，我一度以为是绝对值
+    // 所以binsRadOutput初始化为0
+    // 并不需要把初始的线段也全部离散化为50个角度
     binsCntOutput.clear();
     binsCntOutput.resize(M);
     binsRadOutput.clear();
@@ -783,30 +812,18 @@ void initBins(LinesInQuadType& lines, std::vector<int>& binsCntOutput, std::vect
                 Geometry::Point p2(l.b[0], l.b[1]);
 
                 Geometry::Vec v = p2-p1;
-//                double len = Geometry::len(v);
                 double const pi = Geometry::PI;
 
                 double rad = v.x/std::sqrt(v.x*v.x+v.y*v.y);
                 if(rad>1) rad = 1-1e-5;
-                if(rad<-1) rad = -1+1e-5;
+                if(rad<-1) rad = -1+1e-5; // 防止NaN
                 rad = acos(rad);
 
                 int id = int((rad+pi/2.0)/pi*M);
                 id = std::min(std::max(0, id), M-1);
                 binsCntOutput[id]++;
-//                rad = id*pi/M + (-pi/2.0);
-//                rad = std::min(rad, pi/2.0);
-//                rad = std::max(rad, -pi/2.0);
 
                 l.id = id;
-
-//                v.x = len;
-//                v.y = 0;
-//                v = Geometry::rotate(v, rad);
-//                p2 = p1+v;
-
-//                l.a[0] = p1.x; l.a[1] = p1.y;
-//                l.b[0] = p2.x; l.b[1] = p2.y;
             }
         }
     }
@@ -814,6 +831,7 @@ void initBins(LinesInQuadType& lines, std::vector<int>& binsCntOutput, std::vect
 
 void updateBins(LinesInQuadType const & lines, cv::Mat const & gridInit, cv::Mat const & gridAfter,
                 std::vector<int> const & binsCnt, std::vector<double>& binsRad, int M = BIN_NUM){
+    // 根据第一部分更新的grid结果，来更新theta_m，见论文
     for(size_t i=0;i<M;i++){
         binsRad[i] = 0.0;
     }
@@ -844,7 +862,7 @@ void updateBins(LinesInQuadType const & lines, cv::Mat const & gridInit, cv::Mat
                     quadAfter[2][0], quadAfter[2][1], quadAfter[3][0], quadAfter[3][1];
                 auto e = K*V;
                 Segment l2(e(0, 0), e(1, 0), e(2, 0), e(3, 0));
-
+                // l是原图中的线段，l2则是我们经过插值得到的目标线段
                 binsRad[l.id] += l2.rad-l.rad;
             }
         }
@@ -856,6 +874,7 @@ void updateBins(LinesInQuadType const & lines, cv::Mat const & gridInit, cv::Mat
 }
 
 void getEsMat(cv::Mat const & grid, Eigen::SparseMatrix<double>& output, double lambda=1.0){
+    // 获取Es的Mat，具体可见博客详解
     size_t rows = grid.rows, cols = grid.cols;
     Eigen::SparseMatrix<double> ret((rows-1)*(cols-1)*8, rows*cols*2);
 
@@ -905,7 +924,7 @@ void getEsMat(cv::Mat const & grid, Eigen::SparseMatrix<double>& output, double 
 void getElMat(cv::Mat const & grid, Eigen::SparseMatrix<double>& output,
               LinesInQuadType const & lines, std::vector<int>& binsCnt,
               std::vector<double>& binsRad, double lambda=100.0){
-
+    // 获取El的Mat，具体可见博客详解
     size_t lineCnt = 0;
     size_t rows = grid.rows, cols = grid.cols;
 
@@ -916,36 +935,6 @@ void getElMat(cv::Mat const & grid, Eigen::SparseMatrix<double>& output,
     Eigen::SparseMatrix<double> ret(lineCnt*2, rows*cols*2);
     std::vector<cv::Vec2i> quad;
     size_t cnt = 0;
-
-//    {
-//        quad.push_back(cv::Vec2i(0, 0));
-//        quad.push_back(cv::Vec2i(50, 0));
-//        quad.push_back(cv::Vec2i(0, 50));
-//        quad.push_back(cv::Vec2i(50, 50));
-//        Segment l(0, 25, 50, 25);
-
-//        Eigen::MatrixXd R(2,2);
-//        double theta = -Geometry::PI/4;
-//        R << cos(theta), -sin(theta),
-//            sin(theta), cos(theta);
-//        Eigen::MatrixXd e(2,1);
-
-//        e<<l.b[0]-l.a[0], l.b[1]-l.a[1];
-//        Eigen::MatrixXd C = R*e*(e.transpose()*e).inverse()*e.transpose()*R.transpose()-Eigen::MatrixXd::Identity(2, 2);
-//        Eigen::MatrixXd K = getBilinearInterpolationMat(quad, l);
-//        Eigen::MatrixXd D(2, 4);
-//        D << -1, 0, 1, 0,
-//            0, -1, 0, 1;
-//        Eigen::MatrixXd final = C * D * K;
-
-//        Eigen::MatrixXd V(8, 1);
-//        V<<0, 50, 50, 0, 50, 100, 100, 50;
-//        auto ans = final*V;
-//        std::cerr<<ans<<"\n##\n";
-//        auto E = K*V;
-//        Segment l2(E(0,0), E(1,0),E(2,0), E(3,0));
-//        std::cerr<<l.rad<<" "<<l2.rad<<"\n";
-//    }
 
     for(size_t i=0;i<rows-1;i++){
         for(size_t j=0;j<cols-1;j++){
@@ -993,6 +982,7 @@ void getElMat(cv::Mat const & grid, Eigen::SparseMatrix<double>& output,
 }
 
 void getEbMat(cv::Size const & rectSz, cv::Mat const & grid, Eigen::SparseMatrix<double>& outputMat, Eigen::VectorXd& outputVec, double lambda=1e8){
+    // 获取Eb的Mat，具体可见博客详解
     size_t rows = grid.rows, cols = grid.cols;
     size_t boundVertexCnt = 2*rows+2*cols-4;
     Eigen::SparseMatrix<double> retM(boundVertexCnt*2, rows*cols*2);
@@ -1066,6 +1056,7 @@ void getEbMat(cv::Size const & rectSz, cv::Mat const & grid, Eigen::SparseMatrix
 }
 
 void vec2Grid(cv::Size const & rectSz, cv::Mat const & grid, Eigen::VectorXd const & V, cv::Mat& output){
+    // 把我们求出的V转换成一个grid
     size_t rows = grid.rows, cols = grid.cols;
     cv::Mat ret = grid.clone();
     for(size_t i=0;i<rows;i++){
@@ -1081,6 +1072,7 @@ void vec2Grid(cv::Size const & rectSz, cv::Mat const & grid, Eigen::VectorXd con
 }
 
 Eigen::SparseMatrix<double> vconcat(Eigen::SparseMatrix<double> const & lhs, Eigen::SparseMatrix<double> const & rhs){
+    // 竖直方向拼接稀疏矩阵
     Eigen::SparseMatrix<double> ret(lhs.rows()+rhs.rows(), lhs.cols());
 
     for(size_t k=0;k<lhs.outerSize();k++){
@@ -1099,12 +1091,14 @@ Eigen::SparseMatrix<double> vconcat(Eigen::SparseMatrix<double> const & lhs, Eig
 }
 
 Eigen::VectorXd vconcat(Eigen::VectorXd const & lhs, Eigen::VectorXd const & rhs){
+    // 竖直方向拼接向量
     Eigen::VectorXd ret(lhs.rows()+rhs.rows());
     ret << lhs, rhs;
     return ret;
 }
 
 void resizeGrid(cv::Mat& grid, cv::Size const & srcSz, cv::Size const & dstSz){
+    // 用于在缩小的图片上生成最终的grid后，将其缩放回原图大小
     for(size_t i=0;i<grid.rows;i++){
         for(size_t j=0;j<grid.cols;j++){
             cv::Vec2i v = grid.at<cv::Vec2i>(i,j);
@@ -1116,6 +1110,7 @@ void resizeGrid(cv::Mat& grid, cv::Size const & srcSz, cv::Size const & dstSz){
 }
 
 void gridStretchingReduction(cv::Mat const & gridInit, cv::Mat const & gridAfter, cv::Size& rectSz){
+    // 文章中提到的减小图片拉伸的办法
     double avgX=0.0, avgY = 0.0;
     for(size_t i=0;i<GRID_ROW_CNT-1;i++){
         for(size_t j=0;j<GRID_COL_CNT-1;j++){
@@ -1160,6 +1155,8 @@ void gridStretchingReduction(cv::Mat const & gridInit, cv::Mat const & gridAfter
 }
 
 void globalWarp(cv::Mat const & img_, cv::Size const & rectSz, cv::Mat const & grid_, cv::Mat& output, int iterCnt=10){
+    // 输入图像，目标矩形框，初始grid
+    // 输出目标grid
     cv::Mat ret = grid_.clone();
     cv::Mat const grid = grid_.clone();
 
@@ -1168,13 +1165,6 @@ void globalWarp(cv::Mat const & img_, cv::Size const & rectSz, cv::Mat const & g
 
     GlobalWarp::LinesInQuadType lines;
     GlobalWarp::getLines(img_, grid, lines);
-
-//    cv::Mat img_lines = img_.clone();
-//    img_lines = cv::Scalar(0, 0, 0);
-//    drawGrid(img_lines, grid);
-//    drawLines(img_lines, lines);
-//    cv::imshow("img lines", img_lines);
-//    cv::waitKey(0);
 
     std::vector<int> binsCnt;
     std::vector<double> binsRad;
@@ -1198,6 +1188,7 @@ void globalWarp(cv::Mat const & img_, cv::Size const & rectSz, cv::Mat const & g
         Eigen::VectorXd V = solver.solve(B);
         vec2Grid(rectSz, grid, V, ret);
 
+        // 之上是更新V的部分，之下是更新theta_m的部分
         updateBins(lines, grid, ret, binsCnt, binsRad);
     }
 
@@ -1325,7 +1316,7 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 }
 
 void glShow(cv::Mat const & img, cv::Mat const & gridInit, cv::Mat const & gridAfter, size_t width, size_t height){
-
+    // 在opengl上进行纹理采样，显示图像，教程可见learnopengl网站
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
@@ -1441,18 +1432,17 @@ void glShow(cv::Mat const & img, cv::Mat const & gridInit, cv::Mat const & gridA
 
 } // namespace GL
 
-void warpImage(cv::Mat const & img, cv::Mat& output, std::string const & path, bool extra=false){
+void warpImage(cv::Mat const & img, cv::Mat& output, int gridDiv, bool extra=false){
+    // 输入图像，输出warp的最终结果，只是我暂时还没有完成这个output，我还没有把图像从opengl里抠出来
+    // gridDiv指，在1/gridDiv的比例上进行grid的计算
+    // 虽然原文指出可以在小图上进行grid的计算，之后再放大回去。但我的实验结果表明，还是原图更好
     auto start = std::chrono::high_resolution_clock::now();
     cv::Mat dis_delta;
     cv::Mat img_out = img.clone();
     cv::Mat img_small;
     cv::Size sz;
-//    sz.width = 800;
-//    sz.height = 200;
-    sz.width = img.cols;
-    sz.height = img.rows;
-//    sz.width = std::max(800, sz.width);
-//    sz.height = std::max(200, sz.height);
+    sz.width = img.cols/gridDiv;
+    sz.height = img.rows/gridDiv;
     cv::resize(img, img_small, sz);
 
     LocalWarp::localWarp(img_small, img_out, dis_delta);
@@ -1508,7 +1498,7 @@ void warpImage(cv::Mat const & img, cv::Mat& output, std::string const & path, b
         }
     }
 
-    GL::glShow(texture, gridInit, gridAfter, rectSz.width, rectSz.height);
+    GL::glShow(texture, gridInit, gridAfter, rectSz.width*gridDiv, rectSz.height*gridDiv);
 
     output = std::move(img_out);
 }
