@@ -2,7 +2,7 @@
 #include <opencv2/imgproc.hpp>
 #include <string>
 #include <chrono>
-#include "RPI.h"
+#include "RPI.hpp"
 
 int main(int argc, char* argv[]) {
     if(argc!=2 && argc!=3){
@@ -21,7 +21,10 @@ int main(int argc, char* argv[]) {
     if(argc==3 && std::string(argv[2])=="-extra") extra = 1;
 
     cv::Mat output;
-    RPI::warpImage(img, output, 2, extra);
+    RPI::warpImage(img, output, 1, extra);
+//    cv::imshow("result", output);
+//    cv::waitKey(0);
+    cv::imwrite("result.jpg", output);
 
     return 0;
 }

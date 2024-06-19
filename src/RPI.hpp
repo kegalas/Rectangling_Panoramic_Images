@@ -1315,7 +1315,7 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height)
     glViewport(0, 0, width, height);
 }
 
-void glShow(cv::Mat const & img, cv::Mat const & gridInit, cv::Mat const & gridAfter, size_t width, size_t height){
+void glShow(cv::Mat const & img, cv::Mat const & gridInit, cv::Mat const & gridAfter, size_t width, size_t height, cv::Mat& output){
     // 在opengl上进行纹理采样，显示图像，教程可见learnopengl网站
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
@@ -1366,6 +1366,8 @@ void glShow(cv::Mat const & img, cv::Mat const & gridInit, cv::Mat const & gridA
         }
     }
 
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
     unsigned int VAO, VBO, EBO;
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
@@ -1389,11 +1391,6 @@ void glShow(cv::Mat const & img, cv::Mat const & gridInit, cv::Mat const & gridA
     glGenTextures(1, &texture);
 
     glBindTexture(GL_TEXTURE_2D, texture);
-
-//    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-//    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-//    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-//    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
@@ -1419,9 +1416,16 @@ void glShow(cv::Mat const & img, cv::Mat const & gridInit, cv::Mat const & gridA
         glBindVertexArray(VAO);
         glDrawElements(GL_TRIANGLES, 6*(rows-1)*(cols-1) , GL_UNSIGNED_INT, 0);
 
+
+
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
+
+    output = cv::Mat::zeros(height, width, CV_8UC3);
+    glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, output.data);
+    cv::cvtColor(output, output, cv::COLOR_RGB2BGR);
+    cv::flip(output, output, 0);
 
     glDeleteVertexArrays(1, &VAO);
     glDeleteBuffers(1, &VBO);
@@ -1498,7 +1502,7 @@ void warpImage(cv::Mat const & img, cv::Mat& output, int gridDiv, bool extra=fal
         }
     }
 
-    GL::glShow(texture, gridInit, gridAfter, rectSz.width*gridDiv, rectSz.height*gridDiv);
+    GL::glShow(texture, gridInit, gridAfter, rectSz.width*gridDiv, rectSz.height*gridDiv, img_out);
 
     output = std::move(img_out);
 }

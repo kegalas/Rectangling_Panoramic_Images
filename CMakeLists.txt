@@ -22,7 +22,7 @@ LINK_LIBRARIES("${CMAKE_CURRENT_SOURCE_DIR}/lib/glfw3.dll")
 configure_file(src/img.vs img.vs)
 configure_file(src/img.fs img.fs)
 
-file(GLOB SRC_LIST CONFIGURE_DEPENDS src/*.cpp src/*.h src/*.c)
+file(GLOB SRC_LIST CONFIGURE_DEPENDS src/*.cpp src/*.hpp src/*.h src/*.c)
 add_executable(${PROJECT_NAME} ${SRC_LIST})
 
 target_link_libraries(${PROJECT_NAME} 
