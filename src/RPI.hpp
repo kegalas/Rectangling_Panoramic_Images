@@ -690,7 +690,7 @@ void drawLines(cv::Mat& img, std::vector<cv::Vec4f> const & lines){
 
 void getLines(cv::Mat const & img, cv::Mat const & gridInit, LinesInQuadType& output){
     // 获取图像上的线段信息，切割后放入各个quad中
-    double const mindis = 1;
+    double const mindis = 3;
     cv::Mat img_gray;
     cv::cvtColor(img, img_gray, cv::COLOR_BGR2GRAY);
     cv::Ptr<cv::LineSegmentDetector> lsd = cv::createLineSegmentDetector(cv::LSD_REFINE_STD);
@@ -1174,6 +1174,8 @@ void globalWarp(cv::Mat const & img_, cv::Size const & rectSz, cv::Mat const & g
     Eigen::VectorXd ebV;
     getEbMat(rectSz, grid, ebM, ebV);
 
+    auto start = std::chrono::high_resolution_clock::now();
+
     for(int T=0;T<iterCnt;T++){
         Eigen::SparseMatrix<double> elM;
         getElMat(grid, elM, lines, binsCnt, binsRad);
@@ -1186,11 +1188,19 @@ void globalWarp(cv::Mat const & img_, cv::Size const & rectSz, cv::Mat const & g
         Eigen::SparseQR<Eigen::SparseMatrix<double>, Eigen::COLAMDOrdering<int> > solver;
         solver.compute(A);
         Eigen::VectorXd V = solver.solve(B);
+
+//        Eigen::SimplicialCholesky<Eigen::SparseMatrix<double> > solver(A);
+//        Eigen::VectorXd V = solver.solve(B);
+
         vec2Grid(rectSz, grid, V, ret);
 
         // 之上是更新V的部分，之下是更新theta_m的部分
         updateBins(lines, grid, ret, binsCnt, binsRad);
     }
+
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+    std::cerr << duration << "ms(all iter)" << std::endl;
 
     output = std::move(ret);
 }
@@ -1416,8 +1426,6 @@ void glShow(cv::Mat const & img, cv::Mat const & gridInit, cv::Mat const & gridA
         glBindVertexArray(VAO);
         glDrawElements(GL_TRIANGLES, 6*(rows-1)*(cols-1) , GL_UNSIGNED_INT, 0);
 
-
-
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
@@ -1480,7 +1488,7 @@ void warpImage(cv::Mat const & img, cv::Mat& output, int gridDiv, bool extra=fal
 
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-    std::cout << duration << "ms" << std::endl;
+    std::cerr << duration << "ms" << std::endl;
 
     cv::Mat mask;
     LocalWarp::getMask(img, mask);

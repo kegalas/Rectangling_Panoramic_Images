@@ -1,10 +1,16 @@
 #include <opencv2/opencv.hpp>
 #include <opencv2/imgproc.hpp>
+#include <Eigen/Eigen>
+#include <omp.h>
+
 #include <string>
 #include <chrono>
 #include "RPI.hpp"
 
 int main(int argc, char* argv[]) {
+    omp_set_num_threads(6);
+    Eigen::initParallel();
+
     if(argc!=2 && argc!=3){
         std::cout<<"usage: RPI.exe image_filename";
         return 0;

@@ -1,9 +1,7 @@
 # Rectangling_Panoramic_Images
 my implementation of Rectangling Panoramic Images via Warping
 
-尚未完成，处于正在开发的过程中。
-
-目前大体的算法是完成了，只差一些后处理以及性能优化没做。
+基本完成。只是我搞不懂原论文中的1百万像素使用远古i7在1.5s内跑完是怎么做到的，我猜本算法的最小二乘法的矩阵有某种神秘的性质，可以更简单地计算出来。也可以尝试往并行QR分解去进行优化（可惜我不会），不过原文说的是在i7上的单核跑，想必作者一定有神必算法去解决这个最小二乘问题。
 
 个人博客的论文精读和实现指南：[https://kegalas.top/p/rectangling-panoramic-images-via-warping%E8%AE%BA%E6%96%87%E7%B2%BE%E8%AF%BB%E4%B8%8E%E5%A4%8D%E7%8E%B0/](https://kegalas.top/p/rectangling-panoramic-images-via-warping%E8%AE%BA%E6%96%87%E7%B2%BE%E8%AF%BB%E4%B8%8E%E5%A4%8D%E7%8E%B0/)
 
